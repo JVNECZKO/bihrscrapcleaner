@@ -1,0 +1,65 @@
+import os
+import pandas as pd
+import csv
+import re
+
+def clean_and_update_excel_with_product_id(input_folder, reference_data_path, output_csv_path_template):
+    def find_product_id(reference, ref_df):
+        matching_rows = ref_df[ref_df['Reference code'] == reference]
+        if not matching_rows.empty:
+            return matching_rows.iloc[0]['Product ID']
+        else:
+            return float('nan')
+
+    def clean_text2(text):
+        text = re.sub(r'Bihr Part No:|NORMAL_PRODUCT|STATIC_KIT', '', text)
+        return text.strip()
+
+    # Wczytywanie danych referencyjnych z osobnego pliku
+    reference_df = pd.read_excel(reference_data_path, dtype={'Reference code': str})
+
+    # Wyszukiwanie plików XLSX w określonym folderze
+    for i, filename in enumerate(os.listdir(input_folder)):
+        if filename.endswith('.xlsx'):
+            file_path = os.path.join(input_folder, filename)
+
+            # Wczytywanie arkusza Sheet1
+            sheet1_df = pd.read_excel(file_path, sheet_name=0, dtype={'Text2': str})
+
+            # Czyszczenie i formatowanie danych w Sheet1
+            columns_to_clear = ['Image_URL', 'Image_URL1', 
+                                'Text3', 'Text4', 'Field', 'Field1', 'Text5', 
+                                'Text6', 'Text7', 'Text8', 'Field2', 'Field3']
+            for col in columns_to_clear:
+                if col in sheet1_df.columns:
+                    sheet1_df[col] = ''
+
+            sheet1_df['Text2'] = sheet1_df['Text2'].apply(clean_text2)
+
+            sheet1_df['Field4'] = sheet1_df['Field4'].apply(lambda x: '' if '[' in str(x) or ']' in str(x) else x)
+
+            # Dopasowanie Product ID z danych referencyjnych do Sheet1
+            sheet1_df['Product ID'] = sheet1_df['Text2'].apply(lambda x: find_product_id(x, reference_df))
+
+            # Przenoszenie danych i zmiana nazw kolumn
+            sheet1_df['Make'] = sheet1_df['Field4']
+            sheet1_df['Model'] = sheet1_df['Field5']
+            sheet1_df['Year'] = sheet1_df['Field7']
+
+            # Usuwanie wierszy, gdzie "Make", "Model" lub "Year" są puste
+            sheet1_df = sheet1_df.dropna(subset=['Make', 'Model', 'Year'])
+
+            # Zmiana kolejności kolumn
+            columns_order = ['Product ID', 'Make', 'Model', 'Year'] + [col for col in sheet1_df.columns if col not in ['Product ID', 'Make', 'Model', 'Year']]
+            sheet1_df = sheet1_df[columns_order]
+
+            # Zapisywanie zaktualizowanego Sheet1 do pliku CSV
+            output_csv_path = output_csv_path_template.format(i)
+            sheet1_df.to_csv(output_csv_path, quoting=csv.QUOTE_NONNUMERIC, index=False)
+
+# Użycie funkcji
+input_folder = 'C:\\Users\\lukas\\Desktop\\ALL\\6'  # Ścieżka do folderu z plikami XLSX
+reference_data_path = 'C:\\Users\\lukas\\Desktop\\reference_data.xlsx'  # Ścieżka do pliku z danymi referencyjnymi
+output_csv_path_template = 'C:\\Users\\lukas\\Desktop\\Gotowe\\output_idzero{}.csv'  # Szablon ścieżki wyjściowej z miejscem na numer
+
+clean_and_update_excel_with_product_id(input_folder, reference_data_path, output_csv_path_template)
